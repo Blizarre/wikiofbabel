@@ -1,20 +1,21 @@
+import logging
 import os
 import re
 from typing import List
 
-from fastapi.responses import HTMLResponse, RedirectResponse
 import markdown
-from openai import AsyncOpenAI
-from sqlalchemy import Column, String, Text, create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
-from sqlalchemy.sql import text
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import HTMLResponse, RedirectResponse
+from openai import AsyncOpenAI
+from sqlalchemy import (Column, Computed, Index, String, Text, create_engine,
+                        func, select)
+from sqlalchemy.dialects.postgresql import TSVECTOR
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.sql import text
 
 app = FastAPI(title="Infinite Library")
 
-import logging
-
-log = logging.getLogger()
+log = logging.getLogger(__name__)
 
 # Database setup
 SQLALCHEMY_DATABASE_URL = os.getenv(
@@ -32,50 +33,23 @@ else:
     client = AsyncOpenAI()
 
 
-class Article(DeclarativeBase):
+class Base(DeclarativeBase):
+    pass
+
+
+class Article(Base):
     __tablename__ = "articles"
 
     keyword = Column(String, primary_key=True, index=True)
     content = Column(Text)
     summary = Column(Text)
-
-
-# Create the tsvector columns and indexes
-def setup_full_text_search():
-    with engine.connect() as conn:
-        # Add tsvector columns if they don't exist
-        conn.execute(
-            text(
-                """
-            ALTER TABLE articles
-            ADD COLUMN IF NOT EXISTS keyword_vector tsvector
-            GENERATED ALWAYS AS (to_tsvector('english', keyword)) STORED;
-
-            ALTER TABLE articles
-            ADD COLUMN IF NOT EXISTS content_vector tsvector
-            GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
-        """
-            )
-        )
-
-        # Create GIN indexes if they don't exist
-        conn.execute(
-            text(
-                """
-            CREATE INDEX IF NOT EXISTS idx_articles_keyword_vector
-            ON articles USING GIN(keyword_vector);
-
-            CREATE INDEX IF NOT EXISTS idx_articles_content_vector
-            ON articles USING GIN(content_vector);
-        """
-            )
-        )
-
-        conn.commit()
+    words = Column(
+        TSVECTOR, Computed("to_tsvector('english', keyword || ' ' || content)")
+    )
+    idx = Index("words_idx", words, postgresql_using="gin")
 
 
 Base.metadata.create_all(bind=engine)
-setup_full_text_search()
 
 
 async def generate_article(keyword: str, db: sessionmaker) -> str:
@@ -135,26 +109,20 @@ async def find_related_articles(
     Returns a list of the most relevant articles.
     """
     # Create tsquery from keyword
-    query = " | ".join(keyword.split())
+    searched_words = " | ".join(keyword.split())
 
-    # Execute full-text search query
-    sql = text(
-        """
-        SELECT
-            keyword,
-            content,
-            ts_rank_cd(keyword_vector, to_tsquery('english', :query)) * 2 +
-            ts_rank_cd(content_vector, to_tsquery('english', :query)) as rank
-        FROM articles
-        WHERE
-            keyword_vector @@ to_tsquery('english', :query) OR
-            content_vector @@ to_tsquery('english', :query)
-        ORDER BY rank DESC
-        LIMIT :limit
-    """
+    rank_cd = func.ts_rank_cd(
+        Article.words, func.to_tsquery("english", searched_words)
+    ).label("rank")
+
+    query = (
+        select(Article.keyword, Article.content, rank_cd)
+        .where(Article.words.bool_op("@@")(func.to_tsquery("english", searched_words)))
+        .order_by(rank_cd.desc())
+        .limit(max_articles)
     )
 
-    return list(db.execute(sql, {"query": query, "limit": max_articles}))
+    return list(db.execute(query))
 
 
 def create_context_summary(related_articles: List[Article]) -> str:
