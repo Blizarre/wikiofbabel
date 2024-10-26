@@ -1,16 +1,24 @@
 import logging
 import os
 import re
-from typing import List
+from typing import Annotated, List
 
 import markdown
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from openai import AsyncOpenAI
-from sqlalchemy import (Column, Computed, Index, String, Text, create_engine,
-                        func, select)
+from sqlalchemy import (
+    Column,
+    Computed,
+    Index,
+    String,
+    Text,
+    create_engine,
+    func,
+    select,
+)
 from sqlalchemy.dialects.postgresql import TSVECTOR
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
 from sqlalchemy.sql import text
 
 app = FastAPI(title="Infinite Library")
@@ -23,6 +31,13 @@ SQLALCHEMY_DATABASE_URL = os.getenv(
 )
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(engine)
+
+
+def get_session():
+    yield SessionLocal()
+
+
+DbSession = Annotated[Session, Depends(get_session)]
 
 envfile = os.path.expanduser("~/.openai")
 if os.path.isfile(envfile):
@@ -145,9 +160,9 @@ async def generate_summary(content: str):
         messages=[
             {
                 "role": "system",
-                "content": """You are a summary generator. You will summarise each message in less than
-             100 words. The messages are wiki articles. You should only output the summary. Please try to retain
-             as many keywords as possible from the original text
+                "content": """You are a summary generator for a full text search engine. You will summarise each
+                message in less than 100 words. The messages are wiki articles. You should only output the summary.
+                Please try to retain as many keywords as possible from the original text.
              """,
             },
             {"role": "user", "content": content},
@@ -174,8 +189,7 @@ def process_markdown(content: str) -> str:
 
 
 @app.get("/random")
-async def get_random_article():
-    db = SessionLocal()
+async def get_random_article(db: DbSession):
     # We try different sampling rates until we get a match
     for rate in [1, 10, 50, 75, 90, 100]:
         print(rate)
@@ -216,35 +230,34 @@ def render_content(title: str, content: str):
 
 
 @app.get("/")
-async def page_list():
-    db = SessionLocal()
+async def page_list(db: DbSession):
     articles = db.query(Article).limit(50)
     main = "# The infinite library\n\nYou can go anywhere and we will auto-generate a new page for every keywords\n\n## The first 50 pages:\n"
     content = main + "\n".join("- [[" + a.keyword + "]]" for a in articles)
     return HTMLResponse(content=render_content("The infinite Library", content))
 
 
-@app.get("/{keyword}")
-async def get_article(keyword: str):
-    # Convert URL format to storage format (replace underscores with spaces)
-    keyword = keyword.replace("_", " ")
+@app.get("/favicon.ico")
+async def favicon():
+    raise HTTPException(404)
 
-    # Clean the keyword (allow spaces but remove other special characters)
+
+@app.get("/{keyword}")
+async def get_article(keyword: str, db: DbSession):
+    # Very simplistic keyword conversion: _ become spaces, any other non-alphanumerical character
+    # is ignored
+    keyword = keyword.replace("_", " ")
     keyword = re.sub(r"[^a-zA-Z0-9\s]", "", keyword).strip()
     if not keyword:
         raise HTTPException(status_code=400, detail="Invalid keyword")
 
-    db = SessionLocal()
     try:
-        # Check if article exists in database
         article = db.query(Article).filter(Article.keyword == keyword).first()
 
         if not article:
-            # Generate new article with context
             content = await generate_article(keyword, db)
             summary = await generate_summary(content)
 
-            # Store in database
             article = Article(keyword=keyword, content=content, summary=summary)
             db.add(article)
             db.commit()
