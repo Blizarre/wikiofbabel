@@ -26,7 +26,7 @@ poetry install
 poetry run fastapi dev
 ```
 
-Then open your browser to `http://0.0.0.0:8000/`. At the beginning there will be nothing, so just try a read about a topic. Invent a war, or a great city: `http://0.0.0.0:8000/New_New_Paris`.
+Then open your browser to `http://127.0.0.1:8000/`. At the beginning there will be nothing, so just try a read about a topic. Invent a war, or a great city: `http://127.0.0.1:8000/New_New_Paris`.
 
 It will take a while to generate the page and display it, you will need to be patient (20s?). There is a link at the bottom to go to a random (existing) page.
 
