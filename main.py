@@ -47,9 +47,9 @@ envfile = os.path.expanduser("~/.openai")
 if os.path.isfile(envfile):
     with open(os.path.expanduser("~/.openai"), encoding="utf-8") as fd:
         key = fd.read().strip()
-        client = AsyncOpenAI(api_key=key)
+        oai_client = AsyncOpenAI(api_key=key)
 else:
-    client = AsyncOpenAI()
+    oai_client = AsyncOpenAI()
 
 
 class Base(DeclarativeBase):
@@ -105,7 +105,7 @@ The article should include:
 
 Format the article in markdown."""
 
-    response = await client.chat.completions.create(
+    response = await oai_client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
@@ -159,7 +159,7 @@ def create_context_summary(related_articles: List[Article]) -> str:
 
 
 async def generate_summary(content: str):
-    response = await client.chat.completions.create(
+    response = await oai_client.chat.completions.create(
         model="gpt-4o",
         messages=[
             {
@@ -203,6 +203,12 @@ async def get_random_article(db: DbSession):
         ).first()
         if result is not None:
             break
+    if result is None:
+        return HTMLResponse(
+            content=render_content(
+                "Nowhere", "Do you want to try something? Like [[The great Emu War]]"
+            )
+        )
     return RedirectResponse(url="/" + result[0].replace(" ", "_"))
 
 
