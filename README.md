@@ -4,9 +4,7 @@ An (almost) infinite wiki, inspired by [Wikipedia](https://en.wikipedia.org/) an
 
 All the possible wiki pages exist. If they haven't been "materialized" yet, ChatGPT will be used to generate it, using context from the rest of the wiki (from a Postgres Full Text Search). It will also add internal links and citations, just like the real thing!
 
-It is not meant to be taken seriously, and was hacked to test [Claude.ai](https://claude.ai/) on a Sunday morning. The verdict: It's not quite there yet, but as usual with LLMs, it gives you a good starting point. It was really fun to write, but it is nothing more than a PoC. You wouldn't release that to the open internet!
-
-**If google or one of the AI crawler finds this service on the open internet, you will add another billion dollar to OpenAI's valuation! And it will come from your pocket.**
+It is not meant to be taken seriously, and was hacked to test [Claude.ai](https://claude.ai/) on a Sunday morning. The verdict: It's not quite there yet, but as usual with LLMs, it gives you a good starting point. It was really fun to write, but it is nothing more than a PoC. **You don't want to run this on the open internet!**.
 
 I could imagine that it could be useful for world-building?
 
@@ -20,8 +18,8 @@ I could imagine that it could be useful for world-building?
 
 To start the server:
 
-```
-make resetdb
+```bash
+make resetdb # warning: will also remove any existing db container
 poetry install
 poetry run fastapi dev
 ```
