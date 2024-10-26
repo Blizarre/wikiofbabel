@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "wikiofbabel"
+version = "0.1.0"
+description = "The Wiki of Babel"
+authors = ["Simon M. <git@simon.marache.net>"]
+license = "GPL-3.0-or-later"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = { extras = ["standard"], version = "^0.115.3" }
+FastAPI-SQLAlchemy = "^0.2.1"
+Markdown = "^3.7"
+psycopg2-binary = "^2.9.10"
+openai = "^1.52.2"
+
+[tool.poetry.group.dev.dependencies]
+mypy = "^1.13.0"
+pylint = "^3.3.1"
+black = "*"
+isort = "^5.13.2"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
