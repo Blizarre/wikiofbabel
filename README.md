@@ -21,7 +21,7 @@ To start the server:
 ```bash
 make resetdb # warning: will also remove any existing db container
 poetry install
-poetry run fastapi dev
+poetry run fastapi dev wikiofbabel
 ```
 
 Then open your browser to `http://127.0.0.1:8000/`. At the beginning there will be nothing, so just try a read about a topic. Invent a war, or a great city: `http://127.0.0.1:8000/New_New_Paris`.

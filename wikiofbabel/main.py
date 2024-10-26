@@ -1,77 +1,32 @@
 import logging
-import os
 import re
-from typing import Annotated, List
+from typing import List
 
 import markdown
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
-from openai import AsyncOpenAI
-from sqlalchemy import (
-    Column,
-    Computed,
-    Index,
-    String,
-    Text,
-    create_engine,
-    func,
-    select,
-)
-from sqlalchemy.dialects.postgresql import TSVECTOR
-from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
+from sqlalchemy import func, select
 from sqlalchemy.sql import text
 
-app = FastAPI(title="Infinite Library")
+from wikiofbabel.clients import AsyncOpenAI
+
+from .clients import OAIClient
+from .db import DbSession
+from .db import engine as db_engine
+from .models import Article, WikiBase
 
 log = logging.getLogger(__name__)
 
-# Database setup
-SQLALCHEMY_DATABASE_URL = os.getenv(
-    "DATABASE_URL", "postgresql://user:password@localhost/wikiofbabel"
-)
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(engine)
+
+def lifespan(_app: FastAPI):
+    WikiBase.metadata.create_all(bind=db_engine)
+    yield
 
 
-def get_session():
-    try:
-        session = SessionLocal()
-        yield session
-    finally:
-        session.close()
+app = FastAPI(title="Infinite Library", lifespan=lifespan)
 
 
-DbSession = Annotated[Session, Depends(get_session)]
-
-envfile = os.path.expanduser("~/.openai")
-if os.path.isfile(envfile):
-    with open(os.path.expanduser("~/.openai"), encoding="utf-8") as fd:
-        key = fd.read().strip()
-        oai_client = AsyncOpenAI(api_key=key)
-else:
-    oai_client = AsyncOpenAI()
-
-
-class Base(DeclarativeBase):
-    pass
-
-
-class Article(Base):
-    __tablename__ = "articles"
-
-    keyword = Column(String, primary_key=True, index=True)
-    content = Column(Text)
-    summary = Column(Text)
-    words = Column(
-        TSVECTOR, Computed("to_tsvector('english', keyword || ' ' || content)")
-    )
-    idx = Index("words_idx", words, postgresql_using="gin")
-
-
-Base.metadata.create_all(bind=engine)
-
-
-async def generate_article(keyword: str, db: sessionmaker) -> str:
+async def generate_article(keyword: str, db: DbSession, oai_client: AsyncOpenAI) -> str:
     """
     Generate an article using ChatGPT with context from related articles.
     """
@@ -121,7 +76,7 @@ Format the article in markdown."""
 
 
 async def find_related_articles(
-    keyword: str, db: sessionmaker, max_articles: int = 3
+    keyword: str, db: DbSession, max_articles: int = 3
 ) -> List[Article]:
     """
     Find related articles using PostgreSQL full-text search.
@@ -158,7 +113,7 @@ def create_context_summary(related_articles: List[Article]) -> str:
     return summary
 
 
-async def generate_summary(content: str):
+async def generate_summary(content: str, oai_client: AsyncOpenAI):
     response = await oai_client.chat.completions.create(
         model="gpt-4o",
         messages=[
@@ -253,7 +208,7 @@ async def favicon():
 
 
 @app.get("/{keyword}")
-async def get_article(keyword: str, db: DbSession):
+async def get_article(keyword: str, db: DbSession, oai_client: OAIClient):
     # Very simplistic keyword conversion: _ become spaces, any other non-alphanumerical character
     # is ignored
     keyword = keyword.replace("_", " ")
@@ -264,8 +219,8 @@ async def get_article(keyword: str, db: DbSession):
     article = db.query(Article).filter(Article.keyword == keyword).first()
 
     if not article:
-        content = await generate_article(keyword, db)
-        summary = await generate_summary(content)
+        content = await generate_article(keyword, db, oai_client)
+        summary = await generate_summary(content, oai_client)
 
         article = Article(keyword=keyword, content=content, summary=summary)
         db.add(article)
