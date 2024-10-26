@@ -34,7 +34,11 @@ SessionLocal = sessionmaker(engine)
 
 
 def get_session():
-    yield SessionLocal()
+    try:
+        session = SessionLocal()
+        yield session
+    finally:
+        session.close()
 
 
 DbSession = Annotated[Session, Depends(get_session)]
@@ -251,19 +255,15 @@ async def get_article(keyword: str, db: DbSession):
     if not keyword:
         raise HTTPException(status_code=400, detail="Invalid keyword")
 
-    try:
-        article = db.query(Article).filter(Article.keyword == keyword).first()
+    article = db.query(Article).filter(Article.keyword == keyword).first()
 
-        if not article:
-            content = await generate_article(keyword, db)
-            summary = await generate_summary(content)
+    if not article:
+        content = await generate_article(keyword, db)
+        summary = await generate_summary(content)
 
-            article = Article(keyword=keyword, content=content, summary=summary)
-            db.add(article)
-            db.commit()
-            db.refresh(article)
+        article = Article(keyword=keyword, content=content, summary=summary)
+        db.add(article)
+        db.commit()
+        db.refresh(article)
 
-        return HTMLResponse(content=render_content(article.keyword, article.content))
-
-    finally:
-        db.close()
+    return HTMLResponse(content=render_content(article.keyword, article.content))
