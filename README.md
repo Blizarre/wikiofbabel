@@ -8,6 +8,14 @@ It is not meant to be taken seriously, and was hacked to test [Claude.ai](https:
 
 I could imagine that it could be useful for world-building?
 
+## Next steps (if there is enough interest)
+
+- Either stream the result from OpenAI as the page is generated, or return a placeholder while the article is processed in a background job. Streaming the result is probably a nicer experience.
+- Have a background job try to deduplicate the articles names ("Emu great war" and "The Emu great war")
+- Detect when the LLM is going in a rambling loop and rerun it
+- Add proper configuration support instead of hardcoding everything
+- Add a docker-compose file to allow anyone to run it without poetry
+
 ## How to run
 
 - The dependencies are managed using poetry.
